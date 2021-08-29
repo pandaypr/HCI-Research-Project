@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[1]: All Imports
 
 
 import sys
@@ -23,9 +23,13 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 import matplotlib.cm as cm
 import random
+from segmentation_models.losses import bce_jaccard_loss  #Importing jaccarda loss for training the model
+from segmentation_models.metrics import iou_score
+from tensorflow.keras.optimizers import Adam             #Adam optimizer
+SM_FRAMEWORK=tf.keras
 
 
-# In[2]:
+# In[2]: Path for the image files
 
 
 WEIGHTS_FOLDER = 'weights/'
@@ -34,7 +38,7 @@ if not os.path.exists(WEIGHTS_FOLDER):
   os.makedirs(os.path.join(WEIGHTS_FOLDER,"VAE"))
 
 
-# In[15]:
+# In[15]: Defining Hyper Parametersfor the VAE
 
 
 IMG_WIDTH = 256
@@ -43,11 +47,19 @@ IMG_CHANNELS = 3
 INPUT_DIM = (IMG_WIDTH,IMG_HEIGHT,IMG_CHANNELS)
 BATCH_SIZE = 64
 Z_DIM = 100
+LEARNING_RATE = 0.0005
+N_EPOCHS = 7
+LOSS_FACTOR = 10000
 PATH='train/image'
 ANNOT_PATH='train/label'
+train_frame_path = 'train/image'
+train_mask_path = 'train/label'
+
+val_frame_path = 'Dataset/images/train images'
+val_mask_path = 'Dataset/masks/train label'
 
 
-# In[17]:
+# In[17]: Defining the function to create Encoder of the VAE
 
 
 # ENCODER
@@ -104,18 +116,19 @@ def build_vae_encoder(input_dim, output_dim, conv_filters, conv_kernel_size,
 
     return encoder_input, encoder_output, mean_mu, log_var, shape_before_flattening, Model(encoder_input,
                                                                                            encoder_output)
-
+#calling the creat encoder function and creating the  encoder for VAE
+  
 vae_encoder_input, vae_encoder_output, mean_mu, log_var, vae_shape_before_flattening, vae_encoder = build_vae_encoder(
     input_dim=INPUT_DIM,
     output_dim=Z_DIM,
-    conv_filters=[32,64,64,64, 128],
-    conv_kernel_size=[3, 3, 3, 3, 3],
-    conv_strides=[2, 2, 2, 2, 2])
+    conv_filters=[32,64,64,64, 128],   #Convolution filters for encoder
+    conv_kernel_size=[3, 3, 3, 3, 3],  #Kernel size
+    conv_strides=[2, 2, 2, 2, 2])      #Stride length for convolution
 
-#vae_encoder.summary()
+#vae_encoder.summary()  #To view the summary of the encoder
 
 
-# In[19]:
+# In[19]:Defining the function to create Decoder of the VAE
 
 
 # Decoder
@@ -151,18 +164,16 @@ def build_decoder(input_dim, shape_before_flattening, conv_filters, conv_kernel_
 
   return decoder_input, decoder_output, Model(decoder_input, decoder_output)
 
+#Calling the creat encoder function and creating the  Decoder for VAE
 vae_decoder_input, vae_decoder_output, vae_decoder = build_decoder(input_dim=Z_DIM,
                                                                    shape_before_flattening=vae_shape_before_flattening,
-                                                                   conv_filters=[128, 64, 64, 32, 1],
-                                                                   conv_kernel_size=[3, 3, 3, 3, 3],
-                                                                   conv_strides=[2, 2, 2, 2, 2])
+                                                                   conv_filters=[128, 64, 64, 32, 1],   #Convolution filters for encoder
+                                                                   conv_kernel_size=[3, 3, 3, 3, 3],    #Kernel size
+                                                                   conv_strides=[2, 2, 2, 2, 2])        #Stride length for convolution
 #vae_decoder.summary()
 
 
-# In[20]:
-
-
-import cv2
+# In[20]: Defining custom data generator for generating training images using yield function
 
 def data_gen(img_folder, mask_folder, batch_size):
   c = 0
@@ -194,19 +205,11 @@ def data_gen(img_folder, mask_folder, batch_size):
       
     yield img, mask
 
-
-
-
-train_frame_path = 'train/image'
-train_mask_path = 'train/label'
-
-val_frame_path = 'Dataset/images/train images'
-val_mask_path = 'Dataset/masks/train label'
-
-# Train the model
+#Calling datagenerator for training and validation of the data
 train_gen = data_gen(train_frame_path,train_mask_path, batch_size = BATCH_SIZE)
 val_gen = data_gen(val_frame_path,val_mask_path, batch_size = BATCH_SIZE)
 
+#Image loader for testing the model and generating the heatmap
 def load_image(path, preprocess=True):
     """Load and preprocess image."""
     train_ids = list(int(s.split(".")[0]) for s in list(next(os.walk(path))[2]))
@@ -218,9 +221,7 @@ def load_image(path, preprocess=True):
         image[n] = img.astype('uint8') / 255
     return image
 
-
-# In[8]:
-
+# In[8]:Guided model for guided Grad-CAM, it was W.I.P
 
 '''def build_guided_model():
     """Function returning modified model.
@@ -241,49 +242,34 @@ def load_image(path, preprocess=True):
         new_model.summary()
     return new_model'''
 
+#Building the VAE Model
 def build_model():
     vae_input = vae_encoder_input
     vae_output = vae_decoder(vae_encoder_output)
-    vae_model = Model(vae_input, vae_output)
-    
+    vae_model = Model(vae_input, vae_output
     return vae_model
 
-
-from segmentation_models.losses import bce_jaccard_loss
-from segmentation_models.metrics import iou_score
-from tensorflow.keras.optimizers import Adam
-LEARNING_RATE = 0.0005
-N_EPOCHS = 7
-LOSS_FACTOR = 10000
-SM_FRAMEWORK=tf.keras
+#Building and compiling the model for training   
 model = build_model()
 model.compile('Adam', loss=bce_jaccard_loss, metrics=[iou_score])
 checkpoint_vae = ModelCheckpoint(os.path.join(WEIGHTS_FOLDER, 'VAE/SegGradCAM.hdf5'), save_weights_only = True, verbose=1)
 
-
-# In[24]:
-
-
 NO_OF_TRAINING_IMAGES = len(os.listdir(train_frame_path))
 NO_OF_VAL_IMAGES = len(os.listdir(val_frame_path))
 
-
+#Model.fit for training the model
 model.fit(train_gen, epochs=N_EPOCHS,
                           steps_per_epoch = (NO_OF_TRAINING_IMAGES//BATCH_SIZE),
                           validation_data=val_gen, 
                           validation_steps=(NO_OF_VAL_IMAGES//BATCH_SIZE),
                           #callbacks=callbacks_list,
                           callbacks=[checkpoint_vae])
-
-
-# In[ ]:
-
-
-def make_gradcam_heatmap(img_array, model, last_conv_layer_name, encoder_out, pred_index=None):
+#Function to make gradcam heatmap
+def make_gradcam_heatmap(img_array, model, last_conv_layer_name, encoder_out, pred_index=None): 
     grad_model = tf.keras.models.Model(
         [model.inputs], [model.get_layer(last_conv_layer_name).output, model.get_layer(encoder_out).output]
     )
-    with tf.GradientTape() as tape:
+    with tf.GradientTape() as tape: 
         last_conv_layer_output, preds = grad_model(img_array)
         #preds = preds.squeeze()
         #class_channel = preds[2][0][0]
@@ -292,14 +278,6 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name, encoder_out, pr
     #print("last_conv_layer_output: "+str(last_conv_layer_output))
     
     grads = tape.gradient(preds, last_conv_layer_output)
-    
-    """with tf.GradientTape() as tape_1:
-        last_conv_layer_output, preds = grad_model(img_array)
-        if pred_index is None:
-            pred_index = tf.argmax(preds[2])
-        class_channel = preds[2][0][1]
-    grads_1 = tape_1.gradient(class_channel, last_conv_layer_output)"""
-
     #print("grads: "+str((grads)))
     #print("###############grads_1: "+str((grads_1)))
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
@@ -310,67 +288,29 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name, encoder_out, pr
     #heatmap_1 = last_conv_layer_output @ pooled_grads_1[..., tf.newaxis]
     heatmap = tf.squeeze(heatmap)
     #heatmap_1 = tf.squeeze(heatmap_1)
-
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     #heatmap_1 = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap_1)
     #print("heatmap: "+str((heatmap)))
     return heatmap.numpy()
-
-
-# In[ ]:
-
-
+#Defining last convolutional layer name of the encoder and encoder output
 last_conv_layer_name = "encoder_conv_3"
 encoder_out = "encoder_output"
 
-
-# In[ ]:
-
-
+#image path for testing the images to generate heatmaps
 img_path='Dataset/images/test images'
 a = load_image(img_path)
 img_array = a[0]
 img_array = keras.preprocessing.image.img_to_array(img_array)
 img_array = np.expand_dims(img_array, axis=0)
-
-
-# In[ ]:
-
-
-res = model.predict(img_array)
-heatmap = make_gradcam_heatmap(img_array, model, last_conv_layer_name, encoder_out)
-
-
-# In[ ]:
-
-
-##res = res.squeeze()
-
-
-# In[ ]:
-
-
-#imshow(res)
-
-
-# In[ ]:
-
+res = model.predict(img_array)        #Generating output from the model
+heatmap = make_gradcam_heatmap(img_array, model, last_conv_layer_name, encoder_out)  #Generate heatmap
 
 res = res.squeeze()
-#res=tf.make_ndarray(res)
-#print(res.size)
-
 from PIL import Image
 res = res*255
 res = res.astype(np.uint8)
 res = Image.fromarray(res)
-
-#imshow(res)
-res.save("VAE_generated_image.jpeg")
-
-
-# In[ ]:
-
+res.save("VAE_generated_image.jpeg")   #Save the output image
 
 hm = np.uint8(255 * heatmap)
 hm = np.expand_dims(hm, axis=2)
@@ -379,17 +319,11 @@ print(img_array.shape)
 hm = hm.resize((img_array.shape[1], img_array.shape[2]))
 hm = np.asanyarray(hm)
 imshow(hm)
-#hm.save("heatmap.jpg")
-cv2.imwrite('hm.jpeg', hm)
+cv2.imwrite('hm.jpeg', hm)   #Saving the heatmap of the image
 
-
-# In[ ]:
-
-
-def save_and_display_gradcam(img, heatmap,cam_path="superimposed_img.jpg", alpha=0.4):
+def save_and_display_gradcam(img, heatmap,cam_path="superimposed_img.jpg", alpha=0.4):   #Function to generate individual heatmap for individual layers
     #img = keras.preprocessing.image.load_img(img_path)
     #img = keras.preprocessing.image.img_to_array(img)
-
     heatmap = np.uint8(255 * heatmap)
     #heatmap_1 = np.uint8(255 * heatmap_1)
     #hmap = hmap.resize((img.shape[1], img.shape[0]))
@@ -405,10 +339,7 @@ def save_and_display_gradcam(img, heatmap,cam_path="superimposed_img.jpg", alpha
     superimposed_img = keras.preprocessing.image.array_to_img(superimposed_img)
     superimposed_img.save(cam_path)
 
-
-
-
-save_and_display_gradcam(img_array.squeeze(), heatmap)
+save_and_display_gradcam(img_array.squeeze(), heatmap)   #Saving the output heatmaps
 
 
 
