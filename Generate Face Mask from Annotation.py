@@ -1,15 +1,7 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# SOURCE::::::: https://github.com/shatadru99/Image-Segmentation-on-CelebAMask-HQ-dataset    
-
-# In[14]:
-
-
+#Imports
 import os
 import sys
 import numpy as np
-#import pandas as pd
 import shutil
 from shutil import copyfile
 from keras.preprocessing.image import save_img
@@ -19,9 +11,6 @@ import cv2
 # #Please make sure all the folders names are correct acording to your directory structure and those folders are there at the locations
 
 # # #Saving the Names of File in a dictionary
-
-# In[15]:
-
 
 d={}
 for filename in os.listdir('SmallSet/0/'):
@@ -38,9 +27,6 @@ for filename in os.listdir('SmallSet/0/'):
 
 # # Creating folders and saving all the mask file for each image into individual folders
 
-# In[16]:
-
-
 for i in d:
     os.mkdir("SmallSet/masks/"+str(i))
     for j in range(len(d[i])):
@@ -49,8 +35,6 @@ for i in d:
 
 
 # # Remove all Skin Masks
-
-# In[17]:
 
 
 for i in range(0,1999):
@@ -64,9 +48,6 @@ for i in range(0,1999):
 
 # # Clubbing all the masks and making a mask imag for all the folders:
 
-# In[18]:
-
-
 a = []
 for folders in os.listdir('SmallSet/masks/'):
     #print(folders)
@@ -78,13 +59,8 @@ for folders in os.listdir('SmallSet/masks/'):
     save_img('SmallSet/masks/'+folders+'/'+folders+".png", mask)
     #imshow(mask)
     #plt.show()
-    
-
 
 # # Copy only the complete mask image from masks images and paste it in a new folder as ground truths
-
-# In[20]:
-
 
 for folders in os.listdir('SmallSet/masks/'):
     for filename in os.listdir('SmallSet/masks/'+folders+'/'):
@@ -96,9 +72,6 @@ for folders in os.listdir('SmallSet/masks/'):
 
 # # Copy Files from GroundTruth to label
 
-# In[21]:
-
-
 src_files = os.listdir('SmallSet/images/GroundTruth')
 for file_name in src_files:
     full_file_name = os.path.join('SmallSet/images/GroundTruth', file_name)
@@ -108,22 +81,10 @@ for file_name in src_files:
 
 # # Deleting all the disposable files and folders
 
-# In[22]:
-
-
 for folders in os.listdir('SmallSet/masks/'):
     shutil.rmtree('SmallSet/masks/'+folders)
 
-
-# In[23]:
-
-
 for file_name in os.listdir('SmallSet/images/GroundTruth'):
     os.remove('SmallSet/images/GroundTruth/'+file_name)
-
-
-# In[ ]:
-
-
 
 
